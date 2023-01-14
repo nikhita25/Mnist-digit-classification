@@ -1,0 +1,1213 @@
+---
+title: "MNIST"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+#### Nikhita Kannam
+
+The MNIST dataset is a popular dataset that contains handwritten digits as images as well as labels containing the number for those digits. The images 28x28 and the digits are 0 to 9. The dataset is often used for machine learning, classification and deep learning. 
+The MNIST dataset has 60,000 images stored in train_digits and 10,000 labels stores in train_Labels. For this project, linear regression and logistic regression will be used on the dataset into to get the Confusion Matrices, Accuracy and Error Rates. My goal is to see how often a certain digit is mistaken for another and what pairs of digits are mistaken for each other. 
+
+
+
+```{r}
+load_image_file = function(filename) {
+  ret = list()
+  f = file(filename, 'rb')
+  readBin(f, 'integer', n = 1, size = 4, endian = 'big')
+  n = readBin(f, 'integer', n = 1, size = 4, endian = 'big')
+  nrow = readBin(f, 'integer', n = 1, size = 4, endian = 'big')
+  ncol = readBin(f, 'integer', n = 1, size = 4, endian = 'big')
+  x = readBin(f, 'integer', n = n*nrow*ncol, size = 1, signed = FALSE)
+  close(f)
+  data.frame(matrix(x, ncol = nrow*ncol, byrow = TRUE))
+}
+
+load_label_file = function(filename) {
+  f = file(filename, 'rb')
+  readBin(f, 'integer', n = 1, size = 4, endian = 'big')
+  n = readBin(f, 'integer', n = 1, size = 4, endian = 'big')
+  L = readBin(f, 'integer', n = n, size = 1, signed = FALSE)
+  close(f)
+  L
+}
+
+# set working directory
+setwd("~/CSc/DSE_Applied_Stat/Project 2 Regressions")
+
+# load images and corresponding labels 
+train_digits = load_image_file('train-images.idx3-ubyte')
+train_Labels = load_label_file('train-labels.idx1-ubyte')
+
+# Select digit k and re-label the dataset wrt selected digit
+k = 9
+is_k = which((train_Labels == k) %in% TRUE)
+not_k = which((train_Labels == k) %in% FALSE)
+
+# Display i'th instance of selected digit in the training set:
+i=100
+image(1:28, 1:28, matrix(as.matrix(train_digits[is_k[i],]), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+
+
+```
+
+
+Our digit k will be 9. 
+
+```{r}
+not_zero_index = which((colSums(train_digits) > 0) %in% TRUE)
+```
+
+
+We are provided the train_digits dataframe which has 60000 rows and 784 columns. Each row represents an image. The train_labels has the labels for each image. For this assignment, train_labels will be turned into a list of 1s and -1. If the label is k (in our case 9), the label will be replace with a 1, else it will be replaces with a -1. Then train_labels will be combined with the train_digits dataframe. The result will be one dataframe that has 785 columns, the last column will be the label for the image in that row. 
+
+
+```{r}
+#Replace train_labels with 1 if it's k and -1 if it's not k. 
+df_label1 <- replace(train_Labels, which((train_Labels == k) %in% TRUE), 1)
+df_label1 <- replace(df_label1, which((train_Labels == k) %in% FALSE), -1)
+
+```
+
+
+Train digits has been change to remove any column which has all 0s. If the sum of all numbers in the column is less than 1, the column is removed. 
+```{r}
+train_digits <- train_digits[,not_zero_index]
+
+```
+
+
+
+```{r}
+df_y <- data.frame(df_label1)
+df <- cbind(train_digits, df_y)
+
+```
+
+#### Linear Regression
+
+Linear Regression is a model that estimates the relationship between one variable and another variable (or sometimes variables).
+
+Once we have the dataframe we will perform the train and test split. For linear regression, lm() is used to fit the model.
+
+In order to perform linear rgeression, the data should be split into a train and test data set. This is done with the code below. Sample splits the data in half. 
+
+```{r}
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df), replace=TRUE, prob=c(0.5,0.5))
+train  <- df[sample, ]
+test   <- df[!sample, ]
+
+```
+
+fit_train will be the fit model. summary() gives the Coefficients, Residual standard error, Multiple R-squared,	Adjusted R-squared, F-statistic, and p-value. 
+```{r}
+fit_train <- lm(train$df_label1 ~ ., data = train)
+summary(fit_train)
+```
+
+
+#### Beta Image
+The columns with all 0s has been removed. There are no longer 784 columns in our train_digits dataset. This means our image is smaller then an 28x28 matrix. However, we need a 28x28 matrix for the beta image. Below if the code to pass in a 28x28 matrix into image(). 
+
+First an empty list is created to hold the coefficients at the right index. The coefficients are placed in a one column dataframe called beta_image. The for loop will go through not_zero_index, which is a list of indices where the sum of a column is **not** equal to 0. The coefficient will be places at the correct index. The list is then converted into a 28x28 matrix which is passed into image() to output the beta image. 
+
+```{r}
+set.seed(1)
+empty_list_beta <- vector("list", 784)
+beta_image <- data.frame(fit_train$coefficients)
+i <- 2
+for (num in not_zero_index){
+    
+  empty_list_beta[num] <- beta_image[i,]
+  i <- i+1
+}
+```
+
+
+```{r}
+empty_matrix_beta <- matrix(empty_list_beta, nrow = 28, ncol = 28)
+empty_matrix_beta <- replace(empty_matrix_beta, empty_matrix_beta== 'NULL', NA)
+
+```
+
+
+```{r}
+image(1:28, 1:28, matrix(as.matrix(as.numeric(empty_matrix_beta)), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+```
+
+#### Confusion matrix for test and train sets
+
+```{r}
+predicted <- predict(fit_train, test)
+p_class <- ifelse(predicted >.5,"1","-1")
+confusion_mat_test <- table(p_class, test[['df_label1']])
+confusion_mat_test
+
+```
+
+```{r}
+predicted <- predict(fit_train, train, type="response")
+p_class <- ifelse(predicted >.5,"1","-1")
+confusion_mat_train <- table(p_class, train[['df_label1']])
+confusion_mat_train
+
+```
+
+#### Accuracy and Classification Error rate
+Formula for Accuracy: (TP + TN) / (TP + FP + TN + FN)
+Formula for Classification Error rate: 1 - Accuracy
+```{r}
+TP <- confusion_mat_test[1,1]
+TN <- confusion_mat_test[2,2]
+FP <- confusion_mat_test[1,2]
+FN <- confusion_mat_test[2,1]
+Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_test <- 1-Accuracy_test
+paste0('The Accuracy for the testing set is: ',Accuracy_test)
+paste0('The classification error rate for the testing set is: ',classification_error_test)
+```
+
+```{r}
+TP <- confusion_mat_train[1,1]
+TN <- confusion_mat_train[2,2]
+FP <- confusion_mat_train[1,2]
+FN <- confusion_mat_train[2,1]
+Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_train <- 1-Accuracy
+paste0('The Accuracy for the training set is: ',Accuracy_test)
+paste0('The classification error rate for the training set is: ',classification_error_train)
+```
+
+
+The accuracy and error rate for both training and testing are very similar. For the testing set, the error rate is 0.094087 and for the training set the error rate is 0.0936. The error rate is slightly higher for the testing set which can be expected because we fit the training set.  
+
+
+```{r}
+plot(fit_train, lwd = '2', col = 'cadetblue3')
+
+```
+
+The residual and fitted plot has scatterplots that seem to be in 2 straight lines. The number of points above residual 0 and the number below seem to be around the same. There are a couple points that stand out, meaning points stray from the rest of the points. This means that there are a few outliers.  
+
+QQ plots can help us understand the distribution of the data. Here the points are mostly in a straight line in the middle but curve at both ends with a big jump at Quantile 2. The data exhibits that it might have more extreme values than what would be expected in a Normal Distribution.  
+
+Due to the red line not going horizontally with, it can be assumed that homoscedasticity is not satisfies for the regression model. Meaning the spread of residuals is not equal at all fitted values.  
+
+The leverage is the extent to which the coefficients in the modal would change if that particular data point was removed. There are a few points that are close to the cooks distance lines (the gray dashed lines) however it does not appear that any points are inside these lines. So it can be assumed that there aren’t any significantly influential points. However, some points come very close.  
+### Part 2
+ 
+#### Picking 2 digits
+ 
+Instead of using just one digit and comparing it to the others. We will use two digits. For example, if our digits are 0 and 1. Images that are labelled 0 and 1 are kept, the label 0 will be changed to 1 and 1 will be changed to -1. Same with 02, 03, etc. 
+ 
+The code used in part 1 is put under 2 for loops. The first for loop will keep track of digit k and the second for loop will keep track of the second digit. In this chunk of code, list_df holds the label column (1 or –1) for each pair. List_of_df_lin holds the dataframes after the label column is combined.  
+```{r}
+#Use the same logic used in Part 1. Have lists to keep track of pairs, lists and dataframes. 
+label = list()
+list_df = list()
+list_of_pairs = list()
+#Use for loop. The first digit will be x
+for (x in 0:9){
+  corr = x
+  list_to_nine <- list(0,1,2,3,4,5,6,7,8,9)
+  second_loop_list <- list_to_nine[-c(corr+1)]
+  #Second digit will be y
+  for (y in 0:9) {
+    #y should greater than x because we don't need pairs like 11, 22. We also don't need pairs twice, for example 12 and 21 are the same pair
+    if (y > x) {
+      incorr = y
+      pair = list()
+      pair <- append(pair,corr)
+      pair <- append(pair,incorr)
+      #store the pair in a list
+      list_of_pairs[[length(list_of_pairs) + 1]] <- pair
+      #corr is one digit and incorr is the second
+      df_label2 <- replace(train_Labels, which((train_Labels == corr) %in% TRUE), 1)
+      df_label2 <- replace(df_label2, which((train_Labels == incorr) %in% TRUE), -1)
+      list_df[[length(list_df) + 1]] <- df_label2
+    }
+  }
+}
+```
+
+
+
+```{r}
+#This list will store all the new dataframes for each digit. 
+list_of_df_lin = list()
+for (one_pair in list_df){
+  df_y2 <- data.frame(one_pair)
+  df2 <- cbind(train_digits, df_y2)
+  df2 <- subset(df2,(one_pair==1|one_pair==-1))
+  list_of_df_lin[[length(list_of_df_lin) + 1]] <- df2
+  
+}
+```
+
+This chunk of code is calculating the confusion matrix, accuracy and error rates for each of the new dataframes.  
+```{r}
+set.seed(1)
+#Error Rates for Train and Error Rates for Test will be stored in these lists. 
+train_error <- list()
+test_error <- list()
+for (df_for_split in list_of_df_lin){
+  
+  sample <- sample(c(TRUE, FALSE), nrow(df_for_split), replace=TRUE, prob=c(0.5,0.5))
+  train01  <- df_for_split[sample, ]
+  test01   <- df_for_split[!sample, ]
+  fit_train01 <- lm(train01$one_pair ~ ., data = train01)
+  
+  predicted01 <- predict(fit_train01, test01, type="response")
+  p_class01 <- ifelse(predicted01 >.5,"1","-1")
+  confusion_mat_test <- table(p_class01, test01[['one_pair']])
+
+  
+  predicted <- predict(fit_train01, train01, type="response")
+  p_class <- ifelse(predicted >.5,"1","-1")
+  confusion_mat_train <- table(p_class, train01[['one_pair']])
+
+  
+  TP <- confusion_mat_test[1,1]
+  TN <- confusion_mat_test[2,2]
+  FP <- confusion_mat_test[1,2]
+  FN <- confusion_mat_test[2,1]
+  Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_test <- 1-Accuracy_test
+  test_error[[length(test_error) + 1]] <- classification_error_test
+
+  
+  TP <- confusion_mat_train[1,1]
+  TN <- confusion_mat_train[2,2]
+  FP <- confusion_mat_train[1,2]
+  FN <- confusion_mat_train[2,1]
+  Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_train <- 1-Accuracy
+  train_error[[length(train_error) + 1]] <- classification_error_train
+
+
+}
+
+```
+
+#### Matrix with error rates
+Right now there are 45 error rates for the testing sets and 45 error rates for the training sets. The test error rates will be displayed on the lower half of the matrix and the train error rates will be on the upper half. A 10x10 matrix is created and lower.tri and upper.tri are used to fill in the matrix. The diagonal will be empty because those are the pairs of 11, 22, etc.  
+```{r}
+suppressWarnings({
+my_mat <- matrix(, ncol = 10, nrow=10)
+
+my_mat[lower.tri(my_mat, diag = FALSE)] <- test_error[1:45]      # Change lower triangular part
+my_mat <- matrix(my_mat, ncol = 10, nrow=10)
+my_mat[upper.tri(my_mat, diag = FALSE)] <- train_error[1:45] 
+my_mat <- rbind(c(0:9), my_mat)
+my_mat <- cbind(c(-1:9), my_mat)
+my_mat
+})
+```
+
+
+
+The highest error rate is 0.1295887 for the pair 5 and 8 in the testing data. People might have more of a chance of confusing these 2 digits because the lower half of both digits curves the same way. 5 is very similar to 8 except it’s not completely connected at the top and bottom. The second highest error rate was 3 and 8. This could be because the right side of both digits are the same. Since 5 and 8 are mixed up and 3 and 8 are mixed up often, I was interested to see the error rate for 3 and 5. 3 and 5 have the third highest error rate in the testing set.  
+
+The lowest error rate is 0.005890782 for the pair 0 and 1. 0 and 1 do not look similar. This is also the case for the training set.  
+
+However, for the training set the highest error rate is .1128 for the digits 1 and 9.  
+
+#### Beta image for the highest error rate (testing set)
+```{r}
+#The pair with the highest error rate is 5 and 8
+df_label58 <- replace(train_Labels, which((train_Labels == 5) %in% TRUE), 1)
+df_label58 <- replace(df_label58, which((train_Labels == 8) %in% TRUE), -1)
+
+df_y58 <- data.frame(df_label58)
+df58 <- cbind(train_digits, df_y58)
+df58 <- subset(df58,(df_label58==1|df_label58==-1))
+
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df58), replace=TRUE, prob=c(0.5,0.5))
+train58  <- df58[sample, ]
+test58  <- df58[!sample, ]
+
+```
+
+
+
+
+```{r}
+fit_train58 <- lm(train58$df_label58 ~ ., data = train58)
+```
+
+
+```{r}
+set.seed(1)
+empty_list_beta58 <- vector("list", 784)
+beta_image58 <- data.frame(fit_train58$coefficients)
+i <- 2
+for (num58 in not_zero_index){
+    
+  empty_list_beta58[num58] <- beta_image58[i,]
+  i <- i+1
+   
+}
+
+empty_matrix_beta58 <- matrix(empty_list_beta58, nrow = 28, ncol = 28)
+empty_matrix_beta58 <- replace(empty_matrix_beta58, empty_matrix_beta58== 'NULL', NA)
+```
+
+
+```{r}
+image(1:28, 1:28, matrix(as.matrix(as.numeric(empty_matrix_beta58)), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+```
+
+#### Beta Image for the lowest error rate (testing set)
+```{r}
+#The pair with the lowest error rate is 1 and 0
+df_label01 <- replace(train_Labels, which((train_Labels == 0) %in% TRUE), 1)
+df_label01 <- replace(df_label01, which((train_Labels == 1) %in% TRUE), -1)
+
+df_y01 <- data.frame(df_label01)
+df01 <- cbind(train_digits, df_y01)
+df01 <- subset(df01,(df_label01==1|df_label01==-1))
+
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df01), replace=TRUE, prob=c(0.5,0.5))
+train01  <- df01[sample, ]
+test01  <- df01[!sample, ]
+
+```
+
+
+
+
+```{r}
+fit_train01 <- lm(train01$df_label01 ~ ., data = train01)
+#summary(fit_train01)
+```
+
+
+```{r}
+set.seed(1)
+empty_list_beta01 <- vector("list", 784)
+beta_image01 <- data.frame(fit_train01$coefficients)
+i <- 2
+for (num01 in not_zero_index){
+    
+  empty_list_beta01[num01] <- beta_image01[i,]
+  i <- i+1
+   
+}
+
+```
+
+
+```{r}
+empty_matrix_beta01 <- matrix(empty_list_beta01, nrow = 28, ncol = 28)
+empty_matrix_beta01 <- replace(empty_matrix_beta01, empty_matrix_beta01== 'NULL', NA)
+```
+
+
+```{r}
+image(1:28, 1:28, matrix(as.matrix(as.numeric(empty_matrix_beta01)), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+```
+#### Beta Image for highest training set 
+```{r}
+#The pair with the lowest error rate is 1 and 9
+df_label91 <- replace(train_Labels, which((train_Labels == 1) %in% TRUE), 1)
+df_label91 <- replace(df_label91, which((train_Labels == 9) %in% TRUE), -1)
+
+df_y91 <- data.frame(df_label91)
+df91 <- cbind(train_digits, df_y91)
+df91 <- subset(df91,(df_label91==1|df_label91==-1))
+
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df91), replace=TRUE, prob=c(0.5,0.5))
+train91  <- df91[sample, ]
+test91  <- df91[!sample, ]
+
+```
+
+
+
+```{r}
+fit_train91T <- lm(train91$df_label91 ~ ., data = train91)
+```
+
+
+```{r}
+set.seed(1)
+empty_list_beta91 <- vector("list", 784)
+beta_image91 <- data.frame(fit_train91T$coefficients)
+i <- 2
+for (num91 in not_zero_index){
+    
+  empty_list_beta91[num91] <- beta_image91[i,]
+  i <- i+1
+   
+}
+
+```
+
+
+```{r}
+empty_matrix_beta91 <- matrix(empty_list_beta91, nrow = 28, ncol = 28)
+empty_matrix_beta91 <- replace(empty_matrix_beta91, empty_matrix_beta91== 'NULL', NA)
+```
+
+
+```{r}
+image(1:28, 1:28, matrix(as.matrix(as.numeric(empty_matrix_beta91)), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+```
+
+
+The coefficients for the highest error rate pair (5 and 8) are much higher then the lowest error rate pair(0 and 1).  
+
+
+### Part 3
+#### Logistic Regression
+
+Logistic Regression is usually used to predict the probablity of a binary event occuring (yes or no)
+
+We will fit the model using logistic regression. Our k will be 9. Similar to linear regression, the data will be split into train and test. 
+```{r}
+k = 9
+df_label_log <- replace(train_Labels, which((train_Labels == k) %in% TRUE), 1)
+df_label_log <- replace(df_label_log, which((train_Labels == k) %in% FALSE), -1)
+
+```
+
+```{r}
+df_y_log <- data.frame(df_label_log)
+df_log <- cbind(train_digits, df_y_log)
+head(df, 10)
+
+```
+
+
+
+```{r}
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df_log), replace=TRUE, prob=c(0.5,0.5))
+train_log  <- df_log[sample, ]
+test_log   <- df_log[!sample, ]
+head(train_log, 10)
+```
+
+
+```{r}
+log_fit <- glm(as.factor(df_label_log) ~ ., data = train_log, family = 'binomial')
+log_fit
+```
+
+
+```{r}
+empty_list_beta_log <- vector("list", 784)
+beta_image_log <- data.frame(log_fit$coefficients)
+i_log <- 2
+for (num_log in not_zero_index){
+    
+  empty_list_beta_log[num_log] <- beta_image[i_log,]
+  i_log <- i_log+1
+  #print(i)
+    #empty_list_beta[[length(index) + 1]] <- beta_image
+  
+}
+```
+
+
+```{r}
+empty_matrix_beta_log <- matrix(empty_list_beta, nrow = 28, ncol = 28)
+empty_matrix_beta_log <- replace(empty_matrix_beta_log, empty_matrix_beta_log== 'NULL', NA)
+```
+
+
+
+```{r}
+image(1:28, 1:28, matrix(as.matrix(as.numeric(empty_matrix_beta_log)), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+```
+
+
+```{r}
+predicted_log <- predict(log_fit, test_log, type="response")
+Confusion_Matrix_log <- ifelse(predicted_log >.5,"1","-1")
+
+confusion_mat_test_log <- table(Confusion_Matrix_log, test_log[['df_label_log']])
+confusion_mat_test_log
+
+```
+
+```{r}
+predicted_log <- predict(log_fit, train_log, type="response")
+Confusion_Matrix_log <- ifelse(predicted_log >.5,"1","-1")
+
+confusion_mat_train_log <- table(Confusion_Matrix_log, train_log[['df_label_log']])
+confusion_mat_train_log
+
+```
+
+
+```{r}
+TP <- confusion_mat_test_log[1,1]
+TN <- confusion_mat_test_log[2,2]
+FP <- confusion_mat_test_log[1,2]
+FN <- confusion_mat_test_log[2,1]
+Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_test_log <- 1-Accuracy_test
+paste0('The classification error rate for the testing set is: ',Accuracy_test)
+paste0('The classification error rate for the testing set is: ',classification_error_test_log)
+```
+
+```{r}
+TP <- confusion_mat_train_log[1,1]
+TN <- confusion_mat_train_log[2,2]
+FP <- confusion_mat_train_log[1,2]
+FN <- confusion_mat_train_log[2,1]
+Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_train_log <- 1-Accuracy
+paste0('The classification error rate for the training set is: ',Accuracy_test)
+paste0('The classification error rate for the training set is: ',classification_error_train_log)
+```
+ 
+The Classification Error Rates for train and test dataset are similar but it is a little higher for the testing set: the testing error rate is 0.04607 and the training error rate is 0.0384. Compared to our Linear Regression Model, the error rates for Logistics Regression are lower for both the training and testing set.  
+
+
+```{r}
+plot(log_fit, lwd = '2', col = 'pink')
+```
+The QQ plot indicates that there might extreme values that would not be expected in a normal distribution. The residual for both Residual vs Fitted and Residual vs Leverage are very high. The dataset should be reevaluated for outliers.  
+
+#### Part 2 with Logistic Regression
+Logistic regression is applied on all pairs on digit, similar to part 2. These 2 chunks of code are similar but with different variable names.  
+```{r}
+label = list()
+list_df_log = list()
+list_of_pairs_log = list()
+for (x_log in 0:9){
+  corr_log = x_log
+  list_to_nine_log <- list(0,1,2,3,4,5,6,7,8,9)
+  second_loop_list_log <- list_to_nine_log[-c(corr_log+1)]
+  
+  for (y_log in 0:9) {
+    if (y_log > x_log) {
+      incorr_log = y_log
+      pair_log = list()
+      pair_log <- append(pair_log,corr_log)
+      pair_log <- append(pair_log,incorr_log)
+      list_of_pairs_log[[length(list_of_pairs_log) + 1]] <- pair_log
+      df_label2_log <- replace(train_Labels, which((train_Labels == corr_log) %in% TRUE), 1)
+      df_label2_log <- replace(df_label2_log, which((train_Labels == incorr_log) %in% TRUE), -1)
+      list_df_log[[length(list_df_log) + 1]] <- df_label2_log
+    }
+  }
+
+}
+
+
+
+```
+
+The dataframes for each of the digit pairs are stored in list_of_df_lin_log.  
+```{r}
+list_of_df_lin_log = list()
+for (one_pair_log in list_df_log){
+  df_y2_log <- data.frame(one_pair_log)
+  df2_log <- cbind(train_digits, df_y2_log)
+  df2_log <- subset(df2_log,(one_pair_log==1|one_pair_log==-1))
+  list_of_df_lin_log[[length(list_of_df_lin_log) + 1]] <- df2_log
+  
+}
+
+
+```
+
+The Logistic Regression is applied to all dataframes from above. The confusion matrix, accuracy and classirifcation error rates are calculated for the train and test sets.  
+```{r}
+set.seed(1)
+train_error_log <- list()
+test_error_log <- list()
+for (df_for_split_log in list_of_df_lin_log){
+
+  sample_log <- sample(c(TRUE, FALSE), nrow(df_for_split_log), replace=TRUE, prob=c(0.5,0.5))
+  train01_log  <- df_for_split_log[sample_log, ]
+  test01_log   <- df_for_split_log[!sample_log, ]
+  fit_train01_log <- glm(as.factor(one_pair_log) ~ ., data = train01_log, family = 'binomial')
+  
+  predicted01_log <- predict(fit_train01_log, test01_log, type="response")
+  p_class01_log <- ifelse(predicted01_log >.5,"1","-1")
+  confusion_mat_test_log1 <- table(p_class01_log, test01_log[['one_pair_log']])
+
+  
+  predicted_log1 <- predict(fit_train01_log, train01_log, type="response")
+  p_class_log1 <- ifelse(predicted_log1 >.5,"1","-1")
+  confusion_mat_train_log1 <- table(p_class_log1, train01_log[['one_pair_log']])
+
+  
+  TP <- confusion_mat_test_log1[1,1]
+  TN <- confusion_mat_test_log1[2,2]
+  FP <- confusion_mat_test_log1[1,2]
+  FN <- confusion_mat_test_log1[2,1]
+  Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_test_log1 <- 1-Accuracy_test
+  test_error_log[[length(test_error_log) + 1]] <- classification_error_test_log1
+
+  
+  TP <- confusion_mat_train_log1[1,1]
+  TN <- confusion_mat_train_log1[2,2]
+  FP <- confusion_mat_train_log1[1,2]
+  FN <- confusion_mat_train_log1[2,1]
+  Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_train_log1 <- 1-Accuracy
+  train_error_log[[length(train_error_log) + 1]] <- classification_error_train_log1
+
+  
+
+}
+
+```
+
+
+Similar to part 2, the error rates for testing are placed on the lower matrix while the error rates for training are placed on the upper matrix A 10x10 matrix is created and lower.tri and upper.tri are used to fill in the matrix. The diagnol does not have error rates. 
+```{r}
+suppressWarnings({
+
+my_mat_log <- matrix(, ncol = 10, nrow=10)
+
+my_mat_log[lower.tri(my_mat_log, diag = FALSE)] <- test_error_log[1:45]      
+my_mat_log <- matrix(my_mat_log, ncol = 10, nrow=10)
+my_mat_log[upper.tri(my_mat_log, diag = FALSE)] <- train_error_log[1:45] 
+my_mat_log_1 <- rbind(c(0:9), my_mat_log)
+my_mat_log_2 <- cbind(c(-1:9), my_mat_log_1)
+my_mat_log_2
+
+})
+
+```
+
+The results from this matrix are different than what I was expecting and what I got with the Linear Regression Model. I was expecting the results to be 1 and 7 or 5 and 8. The highest error rate is 0.55524 for the digit pair 2 and 3. The top half of both these digits are very similar which could be an explanation as to why it has a high error rate. The lowest error rate is 0.00595 from the pair 0 and 1, similar to the linear regression error rate.  
+
+
+Another thing to notice in this matrix is that there are a lot of 0s. The zeros are mostly on training set error rates. It unlikely that a lot of the pairs have 100% accuracy. The zeros could be due to overfitting.  
+
+#### Beta Image for Highest Error Rate
+```{r}
+
+df_label_log32 <- replace(train_Labels, which((train_Labels == 2) %in% TRUE), 1)
+df_label_log32 <- replace(df_label_log32, which((train_Labels == 3) %in% TRUE), -1)
+
+```
+
+```{r}
+df_y_log32 <- data.frame(df_label_log32)
+df_log32 <- cbind(train_digits, df_y_log32)
+
+```
+
+
+
+```{r}
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df_log32), replace=TRUE, prob=c(0.5,0.5))
+train_log32  <- df_log32[sample, ]
+test_log32   <- df_log32[!sample, ]
+#head(train_log, 10)
+```
+
+
+```{r}
+
+log_fit32 <- glm(as.factor(df_label_log32) ~ ., data = train_log32, family = 'binomial')
+```
+
+
+```{r}
+set.seed(1)
+empty_list_beta32 <- vector("list", 784)
+beta_image32 <- data.frame(log_fit32$coefficients)
+i <- 2
+for (num32 in not_zero_index){
+    
+  empty_list_beta32[num32] <- beta_image32[i,]
+  i <- i+1
+   
+}
+
+empty_matrix_beta32 <- matrix(empty_list_beta32, nrow = 28, ncol = 28)
+empty_matrix_beta32 <- replace(empty_matrix_beta32, empty_matrix_beta32== 'NULL', NA)
+```
+
+
+```{r}
+image(1:28, 1:28, matrix(as.matrix(as.numeric(empty_matrix_beta32)), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+```
+
+
+#### Beta Image for Lowest Error Rate
+```{r}
+
+df_label_log01 <- replace(train_Labels, which((train_Labels == 1) %in% TRUE), 1)
+df_label_log01 <- replace(df_label_log01, which((train_Labels == 0) %in% TRUE), -1)
+
+```
+
+```{r}
+df_y_log01 <- data.frame(df_label_log01)
+df_log01 <- cbind(train_digits, df_y_log01)
+
+```
+
+
+
+```{r}
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df_log01), replace=TRUE, prob=c(0.5,0.5))
+train_log01  <- df_log01[sample, ]
+test_log01   <- df_log01[!sample, ]
+```
+
+
+```{r}
+
+log_fit01 <- glm(as.factor(df_label_log01) ~ ., data = train_log01, family = 'binomial')
+```
+
+
+```{r}
+set.seed(1)
+empty_list_beta01 <- vector("list", 784)
+beta_image01 <- data.frame(log_fit01$coefficients)
+i <- 2
+for (num01 in not_zero_index){
+    
+  empty_list_beta01[num01] <- beta_image01[i,]
+  i <- i+1
+   
+}
+
+```
+
+
+```{r}
+empty_matrix_beta01_log <- matrix(empty_list_beta01, nrow = 28, ncol = 28)
+empty_matrix_beta01_log <- replace(empty_matrix_beta01_log, empty_matrix_beta01_log== 'NULL', NA)
+```
+
+
+```{r}
+image(1:28, 1:28, matrix(as.matrix(as.numeric(empty_matrix_beta01_log)), nrow=28)[ , 28:1], 
+      col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+```
+
+
+Beta image comparison for highest and lowest error rates: 
+
+The coefficients for both seem to be very similar.  
+
+
+### Part 4
+#### Removing outliers with cooks distance (Linear Regression on K vs not K)
+
+Cooks distance will be used to find and remove outliers. The goal for this part is to see if the outliers impacted the results and whether removing them gives us better or worse results. For part 1, I used k = 9. I will repeat part 1 again for digit 9 but with outliers removed. This will be done with Linear and Logistic Regression. 
+
+Part 2 will be repeated as well for all pairs of digits and the error rate matrices will be compared
+
+
+I'm creating a dataframe called df_cook which is a combination of the train_digits dataframe and the labels columns. 
+```{r}
+df_label_cook <- replace(train_Labels, which((train_Labels == 9) %in% TRUE), 1)
+df_label_cook <- replace(df_label_cook, which((train_Labels == 9) %in% FALSE), -1)
+```
+
+```{r}
+dfY_cook <- data.frame(df_label_cook)
+df_cook <- cbind(train_digits, dfY_cook)
+```
+
+The df_cook is split into train and test and the train_cook is is used to fit the model using linear regression
+```{r}
+set.seed(1)
+
+sample <- sample(c(TRUE, FALSE), nrow(df_cook), replace=TRUE, prob=c(0.5,0.5))
+train_cook  <- df_cook[sample, ]
+test_cook   <- df_cook[!sample, ]
+```
+
+```{r}
+fit_cook <- lm(train_cook$df_label_cook ~ ., data = train_cook)
+```
+
+
+In order to get the cooks distance outliers, cooks.distance() is used on the fit model fit_cook. Outliers are numbers that are greater than (4/n), n being the number of rows. After the outliers are identified they are removed from the train_cook dataset. 
+```{r}
+cooksDistance <- cooks.distance(fit_cook)
+```
+
+
+```{r}
+sample_size <- nrow(train_cook)
+plot(cooksDistance, pch="*", cex=2, main="Cooks distance")  
+abline(h = 4/sample_size, col="red")  
+```
+
+
+```{r}
+n <- nrow(train_cook)
+outliers <- as.numeric(names(cooksDistance)[(cooksDistance > (4/n))])
+index <- data.frame(outliers)
+train_cook_removed <- train_cook[!(row.names(train_cook) %in% index$outliers),]
+```
+
+train_cook_removed is the train split with the outliers removed. Now the train split is fit. We will repeat the steps in part 1. 
+```{r}
+fit_outliers <- lm(train_cook_removed$df_label_cook ~ ., data = train_cook_removed)
+```
+
+
+```{r}
+predicted_cook <- predict(fit_outliers, test_cook, type="response")
+p_class_cook <- ifelse(predicted_cook >.5,"1","-1")
+confusion_mat_test_cook <- table(p_class_cook, test_cook[['df_label_cook']])
+confusion_mat_test_cook
+```
+
+```{r}
+predicted_cook <- predict(fit_outliers, train_cook, type="response")
+p_class_cook <- ifelse(predicted_cook >.5,"1","-1")
+confusion_mat_train_cook <- table(p_class_cook, train_cook[['df_label_cook']])
+confusion_mat_train_cook
+
+```
+
+
+```{r}
+TP <- confusion_mat_test_cook[1,1]
+TN <- confusion_mat_test_cook[2,2]
+FP <- confusion_mat_test_cook[1,2]
+FN <- confusion_mat_test_cook[2,1]
+Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_test <- 1-Accuracy_test
+paste0('The classification error rate for the testing set is: ',classification_error_test)
+```
+
+```{r}
+TP <- confusion_mat_train_cook[1,1]
+TN <- confusion_mat_train_cook[2,2]
+FP <- confusion_mat_train_cook[1,2]
+FN <- confusion_mat_train_cook[2,1]
+Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_train <- 1-Accuracy
+paste0('The classification error rate for the training set is: ',classification_error_train)
+```
+
+```{r}
+plot(fit_outliers, lwd = '2', col = 'coral1')
+
+```
+
+
+Let's compare the classification error rates with the outliers removed to when the outliers were inlcuded. 
+
+**Testing Set Error rates**
+With outliers: 0.09408
+Without outliers: 0.09154
+
+
+**Training Set Error rates**
+With outliers: 0.09364
+Without outliers: 0.09095
+
+After performing cooks distance and removing the outliers, the errors rates for both the training and testing decreased by a small margin. Due to the outliers being removed, it is expected that the error rates would decrease. 
+
+
+#### Removing outliers with cooks distance (Logistic Regression on K vs not K)
+
+The above process is repeated but with Logistic Regression. The same train_cook data set is used to fit the model and remove outliers. 
+```{r}
+cook_log <- glm(as.factor(df_label_cook) ~ ., data = train_cook, family = 'binomial')
+```
+
+```{r}
+cooksDistance_log <- cooks.distance(cook_log)
+```
+
+
+```{r}
+sample_size <- nrow(train_cook)
+plot(cooksDistance_log, pch="*", cex=2, main="Cooks distance Log")  
+abline(h = 4/sample_size, col="red")  
+```
+
+
+```{r}
+n <- nrow(train_cook)
+outliers <- as.numeric(names(cooksDistance_log)[(cooksDistance_log > (4/n))])
+index <- data.frame(outliers)
+train_cook_removed_log <- train_cook[!(row.names(train_cook) %in% index$outliers),]
+```
+
+```{r}
+cook_log_removed <- glm(as.factor(df_label_cook) ~ ., data = train_cook_removed_log, family = 'binomial')
+```
+
+```{r}
+
+predicted_cook <- predict(cook_log_removed, test_cook, type="response")
+p_class_cook <- ifelse(predicted_cook >.5,"1","-1")
+confusion_mat_test_cook <- table(p_class_cook, test_cook[['df_label_cook']])
+confusion_mat_test_cook
+```
+
+```{r}
+predicted_cook <- predict(cook_log_removed, train_cook, type="response")
+p_class_cook <- ifelse(predicted_cook >.5,"1","-1")
+confusion_mat_train_cook <- table(p_class_cook, train_cook[['df_label_cook']])
+confusion_mat_train_cook
+
+```
+
+
+```{r}
+TP <- confusion_mat_test_cook[1,1]
+TN <- confusion_mat_test_cook[2,2]
+FP <- confusion_mat_test_cook[1,2]
+FN <- confusion_mat_test_cook[2,1]
+Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_test <- 1-Accuracy_test
+paste0('The classification error rate for the testing set is: ',classification_error_test)
+```
+
+```{r}
+TP <- confusion_mat_train_cook[1,1]
+TN <- confusion_mat_train_cook[2,2]
+FP <- confusion_mat_train_cook[1,2]
+FN <- confusion_mat_train_cook[2,1]
+Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+classification_error_train <- 1-Accuracy
+paste0('The classification error rate for the training set is: ',classification_error_train)
+```
+
+```{r}
+plot(cook_log_removed, lwd = '2', col = 'coral1')
+
+```
+
+Let's compare the classification error rates with the outliers removed to when the outliers were inlcuded. 
+
+**Testing Set Error rates**
+With outliers: 0.04607
+Without outliers: 0.04607
+
+
+**Training Set Error rates**
+With outliers: 0.0384
+Without outliers: 0.03597
+
+After performing cooks distance and removing the outliers, the errors rates for the training set decreased, which was expected because the outliers being removed would have made the fit more accurate. However, the testing error rate stayed exactly the same.
+
+
+#### Repeat part 2
+Part 2 will be repeated with all digit pairs with the outliers removed. This is for linear regression.
+```{r}
+
+label = list()
+list_df = list()
+list_of_pairs = list()
+for (x in 0:9){
+  corr = x
+  list_to_nine <- list(0,1,2,3,4,5,6,7,8,9)
+  second_loop_list <- list_to_nine[-c(corr+1)]
+  
+  for (y in 0:9) {
+    if (y > x) {
+      incorr = y
+      pair = list()
+      pair <- append(pair,corr)
+      pair <- append(pair,incorr)
+      list_of_pairs[[length(list_of_pairs) + 1]] <- pair
+      df_label2 <- replace(train_Labels, which((train_Labels == corr) %in% TRUE), 1)
+      df_label2 <- replace(df_label2, which((train_Labels == incorr) %in% TRUE), -1)
+      list_df[[length(list_df) + 1]] <- df_label2
+    }
+  }
+}
+
+```
+
+
+
+```{r}
+list_of_df_lin = list()
+for (one_pair in list_df){
+  df_y2 <- data.frame(one_pair)
+  df2 <- cbind(train_digits, df_y2)
+  df2 <- subset(df2,(one_pair==1|one_pair==-1))
+  list_of_df_lin[[length(list_of_df_lin) + 1]] <- df2
+  
+}
+
+```
+
+
+The code has been modified to add cooks distance and remove the outliers. 
+```{r}
+set.seed(1)
+train_error <- list()
+test_error <- list()
+for (df_for_split in list_of_df_lin){
+ 
+  set.seed(1)
+
+  sample <- sample(c(TRUE, FALSE), nrow(df_for_split), replace=TRUE, prob=c(0.5,0.5))
+  train_cook  <- df_for_split[sample, ]
+  test_cook   <- df_for_split[!sample, ]
+  fit_train01 <- lm(train_cook$one_pair ~ ., data = train_cook)
+  cooksDistance <- cooks.distance(fit_train01)
+  n <- nrow(train_cook)
+  outliers <- as.numeric(names(cooksDistance)[(cooksDistance > (4/n))])
+  index <- data.frame(outliers)
+  train_cook_removed <- train_cook[!(row.names(train_cook) %in% index$outliers),]
+  fit_outliers <- lm(train_cook_removed$one_pair ~ ., data = train_cook_removed)
+  
+  predicted01 <- predict(fit_outliers, test_cook, type="response")
+  p_class01 <- ifelse(predicted01 >.5,"1","-1")
+  confusion_mat_test <- table(p_class01, test_cook[['one_pair']])
+
+  
+  predicted <- predict(fit_outliers, train_cook, type="response")
+  p_class <- ifelse(predicted >.5,"1","-1")
+  confusion_mat_train <- table(p_class, train_cook[['one_pair']])
+
+  
+  TP <- confusion_mat_test[1,1]
+  TN <- confusion_mat_test[2,2]
+  FP <- confusion_mat_test[1,2]
+  FN <- confusion_mat_test[2,1]
+  Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_test <- 1-Accuracy_test
+  test_error[[length(test_error) + 1]] <- classification_error_test
+  
+  
+  TP <- confusion_mat_train[1,1]
+  TN <- confusion_mat_train[2,2]
+  FP <- confusion_mat_train[1,2]
+  FN <- confusion_mat_train[2,1]
+  Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_train <- 1-Accuracy
+  train_error[[length(train_error) + 1]] <- classification_error_train
+
+  
+
+}
+```
+
+
+
+```{r}
+suppressWarnings({
+
+my_mat <- matrix(, ncol = 10, nrow=10)
+
+my_mat_log[lower.tri(my_mat, diag = FALSE)] <- test_error[1:45]      
+my_mat_log <- matrix(my_mat_log, ncol = 10, nrow=10)
+my_mat_log[upper.tri(my_mat_log, diag = FALSE)] <- train_error[1:45] 
+my_mat_log_1 <- rbind(c(0:9), my_mat_log)
+my_mat_log_2 <- cbind(c(-1:9), my_mat_log_1)
+my_mat_log_2
+
+})
+```
+
+I expected the error rates for both the training and testing datasets to decrease. Compared to the error rate matrix with outliers, most of the error rates did decrease. For example, the highest error rate was 0.12 the pair 5 and 8. With the outliers removed, the error rate is 0.11. The pair 5 and 8 still has the highest error rate in the testing data set. 
+
+The training error rates also mostly decrease with a few exceptions. The lowest error rate in the training set is 0.015 for the pair 0 and 1. This is the pair that had the lowest error rate before when the outliers were included.
+
+
+#### Part 2 is repeated using logistic regression. 
+
+```{r}
+set.seed(1)
+train_error <- list()
+test_error <- list()
+for (df_for_split in list_of_df_lin){
+  
+  set.seed(1)
+
+  sample <- sample(c(TRUE, FALSE), nrow(df_for_split), replace=TRUE, prob=c(0.5,0.5))
+  train_cook  <- df_for_split[sample, ]
+  test_cook   <- df_for_split[!sample, ]
+  fit_train01 <- glm(as.factor(one_pair) ~ ., data = train_cook, family = 'binomial')
+  cooksDistance <- cooks.distance(fit_train01)
+  outliers <- as.numeric(names(cooksDistance)[(cooksDistance > (4/n))])
+  index <- data.frame(outliers)
+  train_cook_removed <- train_cook[!(row.names(train_cook) %in% index$outliers),]
+
+  fit_outliers <- glm(as.factor(one_pair) ~ ., data = train_cook_removed, family = 'binomial')
+  
+  
+  predicted01 <- predict(fit_outliers, test_cook, type="response")
+  p_class01 <- ifelse(predicted01 >.5,"1","-1")
+  confusion_mat_test <- table(p_class01, test_cook[['one_pair']])
+
+  
+  predicted <- predict(fit_outliers, train_cook, type="response")
+  p_class <- ifelse(predicted >.5,"1","-1")
+  confusion_mat_train <- table(p_class, train_cook[['one_pair']])
+
+  
+  TP <- confusion_mat_test[1,1]
+  TN <- confusion_mat_test[2,2]
+  FP <- confusion_mat_test[1,2]
+  FN <- confusion_mat_test[2,1]
+  Accuracy_test <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_test <- 1-Accuracy_test
+  test_error[[length(test_error) + 1]] <- classification_error_test
+ 
+  
+  TP <- confusion_mat_train[1,1]
+  TN <- confusion_mat_train[2,2]
+  FP <- confusion_mat_train[1,2]
+  FN <- confusion_mat_train[2,1]
+  Accuracy <- (TP + TN) / (TP + FP + TN + FN)
+  classification_error_train <- 1-Accuracy
+  train_error[[length(train_error) + 1]] <- classification_error_train
+  
+  
+
+}
+```
+
+
+```{r}
+suppressWarnings({
+
+my_mat_log <- matrix(, ncol = 10, nrow=10)
+
+my_mat_log[lower.tri(my_mat_log, diag = FALSE)] <- test_error[1:45]      
+my_mat_log <- matrix(my_mat_log, ncol = 10, nrow=10)
+my_mat_log[upper.tri(my_mat_log, diag = FALSE)] <- train_error[1:45] 
+my_mat_log_1 <- rbind(c(0:9), my_mat_log)
+my_mat_log_2 <- cbind(c(-1:9), my_mat_log_1)
+my_mat_log_2
+
+})
+```
+
+
+For the logistic error rate matrix, most of the error rates decreased after removing the outliers. However, there are a few that increased. The lowest error rate for testing is the pair 0 and 1. The highest error rate for the testing was for the pair 3 and 5. Before the training set has a lot of 0s as error rates, which was unexpected. Here none of the error rates are 0, however they are still very small.  
+
+
